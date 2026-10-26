@@ -280,9 +280,10 @@ func exprCode(expr string) []bool {
 		c := expr[i]
 		switch {
 		case inRegex:
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == '/' {
+			case '/':
 				inRegex = false
 			}
 		case quote != 0:

@@ -28,11 +28,22 @@ var prodKeywords = []string{
 var prodTiers = []string{"production", "staging"}
 
 func (r *gl013) Check(doc *yaml.Node, file string) []finding.Finding {
+	// A workflow that only runs on protected refs keeps every branch out.
+	if workflowRestrictsToProtected(parser.Unwrap(doc)) {
+		return nil
+	}
+
 	var findings []finding.Finding
 
 	parser.EachJob(doc, func(name *yaml.Node, job *yaml.Node) {
+		if hasExecutionRestriction(job) {
+			return
+		}
 		envNode := parser.FindKey(job, "environment")
 		if envNode == nil {
+			if f, ok := gl013Pages(name, job, file); ok {
+				findings = append(findings, f)
+			}
 			return
 		}
 		envName := extractEnvName(envNode)
@@ -40,9 +51,9 @@ func (r *gl013) Check(doc *yaml.Node, file string) []finding.Finding {
 		byName := envName != "" && isProdEnv(envName)
 		byTier := isProdTier(tier)
 		if !byName && !byTier {
-			return
-		}
-		if hasExecutionRestriction(job) {
+			if f, ok := gl013Pages(name, job, file); ok {
+				findings = append(findings, f)
+			}
 			return
 		}
 		findings = append(findings, finding.Finding{
@@ -57,6 +68,45 @@ func (r *gl013) Check(doc *yaml.Node, file string) []finding.Finding {
 	})
 
 	return findings
+}
+
+// gl013Pages reports a job that publishes the project's main GitLab Pages
+// site. The most recent Pages job wins, whatever its branch, so an unguarded
+// one lets any pushed branch replace the live site.
+func gl013Pages(name, job *yaml.Node, file string) (finding.Finding, bool) {
+	if strings.HasPrefix(name.Value, ".") || inheritsConfig(job) || !publishesMainPages(name.Value, job) {
+		return finding.Finding{}, false
+	}
+	return finding.Finding{
+		RuleID:   "GL013",
+		Severity: finding.Warn,
+		Job:      name.Value,
+		Message: fmt.Sprintf(
+			"job %q publishes the project's GitLab Pages site but has no rules: or only: clause — any branch can replace the live site",
+			name.Value,
+		),
+		File: file,
+		Line: name.Line,
+		Col:  name.Column,
+	}, true
+}
+
+// publishesMainPages reports whether a job deploys GitLab Pages to the main
+// site: a job named pages or one with a pages: key, unless pages: is false or
+// sets a path_prefix (a parallel deployment beside the main site).
+func publishesMainPages(jobName string, job *yaml.Node) bool {
+	p := parser.FindKey(job, "pages")
+	if p == nil {
+		return jobName == "pages"
+	}
+	switch p.Kind {
+	case yaml.ScalarNode:
+		return p.Value != "false"
+	case yaml.MappingNode:
+		prefix := parser.FindKey(p, "path_prefix")
+		return prefix == nil || (prefix.Kind == yaml.ScalarNode && prefix.Value == "")
+	}
+	return false
 }
 
 // gl013Message preserves the original name-based wording and adds a

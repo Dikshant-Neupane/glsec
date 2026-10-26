@@ -29,6 +29,13 @@ func TestIfRestrictsToProtected(t *testing.T) {
 		{`$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG`, true},
 		{`$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH`, true},
 		{`($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH)`, true},
+		// && binds tighter than ||, and parentheses group.
+		{`$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web")`, true},
+		{`($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "web") && $CI_COMMIT_TAG`, true},
+		{`($CI_COMMIT_BRANCH == "main") || ($CI_COMMIT_TAG)`, true},
+		{`(($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH))`, true},
+		{`$CI_COMMIT_TAG =~ /^v(\d+)\.(\d+)$/`, true},
+		{`$CI_COMMIT_TAG =~ /^(v1|v2)\//`, true},
 
 		// Not restricting: negations.
 		{`$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH`, false},
@@ -44,6 +51,12 @@ func TestIfRestrictsToProtected(t *testing.T) {
 		{`$CI_COMMIT_BRANCH`, false},
 		{`$CI_COMMIT_REF_PROTECTED`, false}, // "false" is a non-empty string, so this is always true
 		{`$CI_COMMIT_BRANCH =~ /^release/`, false},
+		{`($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push") || $CI_PIPELINE_SOURCE == "web"`, false},
+		{`($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH) && ($CI_PIPELINE_SOURCE == "push") || $CI_COMMIT_BRANCH`, false},
+		{`$CI_COMMIT_BRANCH == "a || b"`, true},
+		// Unbalanced parentheses restrict nothing.
+		{`($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH`, false},
+		{`$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH)`, false},
 	}
 	for _, tt := range tests {
 		if got := ifRestrictsToProtected(tt.expr); got != tt.want {

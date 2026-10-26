@@ -289,3 +289,25 @@ publish:
 		t.Fatalf("expected 2 findings (deploy-prod + publish), got %d", len(f))
 	}
 }
+
+// A Pages job in a deploy stage is GL013's; GL080 must not report it twice.
+func TestGL080_DefersPagesToGL013(t *testing.T) {
+	f := findings080(t, `
+pages:
+  stage: deploy
+  script: [mkdocs build -d public]
+`)
+	if len(f) != 0 {
+		t.Errorf("expected GL080 to defer the Pages job to GL013, got %d", len(f))
+	}
+	f = findings080(t, `
+pages:
+  stage: deploy
+  pages:
+    path_prefix: review
+  script: [mkdocs build -d public]
+`)
+	if len(f) != 1 {
+		t.Errorf("expected GL080 to keep a prefixed Pages deploy, got %d", len(f))
+	}
+}

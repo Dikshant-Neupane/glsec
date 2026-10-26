@@ -235,3 +235,111 @@ deploy-prod:
 		t.Error("expected non-zero line number")
 	}
 }
+
+func TestGL013_Pages(t *testing.T) {
+	cases := []struct {
+		name string
+		yaml string
+		want int
+	}{
+		{"job named pages", `
+pages:
+  script: [mkdocs build -d public]
+  artifacts:
+    paths: [public]
+`, 1},
+		{"pages: true on another job", `
+docs:
+  pages: true
+  script: [mkdocs build -d public]
+`, 1},
+		{"pages: mapping without prefix", `
+docs:
+  pages:
+    expire_in: 1 week
+  script: [mkdocs build -d public]
+`, 1},
+		{"pages job with non-prod environment", `
+pages:
+  environment: docs
+  script: [mkdocs build -d public]
+`, 1},
+		{"guarded by rules", `
+pages:
+  script: [mkdocs build -d public]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+`, 0},
+		{"guarded by only", `
+pages:
+  script: [mkdocs build -d public]
+  only: [main]
+`, 0},
+		{"parallel deployment with path_prefix", `
+pages:
+  pages:
+    path_prefix: "$CI_COMMIT_REF_SLUG"
+  script: [mkdocs build -d public]
+`, 0},
+		{"pages: false", `
+pages:
+  pages: false
+  script: [mkdocs build -d public]
+`, 0},
+		{"hidden template", `
+.pages:
+  pages: true
+  script: [mkdocs build -d public]
+`, 0},
+		{"extends a base that may carry the guard", `
+pages:
+  extends: .docs
+  script: [mkdocs build -d public]
+`, 0},
+		{"other job without pages", `
+docs:
+  script: [mkdocs build -d public]
+`, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := findings013(t, tc.yaml)
+			if len(f) != tc.want {
+				t.Fatalf("expected %d findings, got %d: %v", tc.want, len(f), f)
+			}
+			if tc.want == 1 && !strings.Contains(f[0].Message, "GitLab Pages") {
+				t.Errorf("unexpected message: %s", f[0].Message)
+			}
+		})
+	}
+}
+
+func TestGL013_WorkflowRestrictsToProtected(t *testing.T) {
+	jobs := `
+pages:
+  script: [mkdocs build -d public]
+deploy:
+  environment: production
+  script: [./deploy.sh]
+`
+	quiet := []string{
+		"workflow:\n  rules:\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n",
+		"workflow:\n  rules:\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n    - if: $CI_COMMIT_TAG\n",
+		"workflow:\n  rules:\n    - if: $CI_COMMIT_REF_PROTECTED == \"true\"\n",
+	}
+	for _, wf := range quiet {
+		if f := findings013(t, wf+jobs); len(f) != 0 {
+			t.Errorf("expected no findings with %q, got %d", wf, len(f))
+		}
+	}
+	loud := []string{
+		"workflow:\n  rules:\n    - if: $CI_PIPELINE_SOURCE == \"merge_request_event\"\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n",
+		"workflow:\n  rules:\n    - if: $CI_COMMIT_BRANCH\n",
+		"workflow:\n  rules:\n    - when: always\n",
+	}
+	for _, wf := range loud {
+		if f := findings013(t, wf+jobs); len(f) != 2 {
+			t.Errorf("expected 2 findings with %q, got %d", wf, len(f))
+		}
+	}
+}

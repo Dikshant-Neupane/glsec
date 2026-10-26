@@ -24,3 +24,12 @@ deploy-eu-west:
     deployment_tier: production
   script:
     - ./deploy.sh
+
+pages:
+  stage: deploy
+  image: python:3.12.7
+  script:
+    - mkdocs build -d public
+  artifacts:
+    paths:
+      - public

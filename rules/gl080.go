@@ -45,7 +45,7 @@ func (r *gl080) Check(doc *yaml.Node, file string) []finding.Finding {
 		}
 		// The production-environment-without-rules case is already covered by
 		// GL013; skip it here to avoid a duplicate finding.
-		if gl013Owns(job) {
+		if gl013Owns(name.Value, job) {
 			return
 		}
 		state := jobGuardState(job)
@@ -176,8 +176,12 @@ func jobGuardState(job *yaml.Node) guardState {
 }
 
 // gl013Owns reports whether GL013 already flags this job (a production-like
-// environment with no rules:/only: restriction), so GL080 can defer to it.
-func gl013Owns(job *yaml.Node) bool {
+// environment or the main Pages site, with no rules:/only: restriction), so
+// GL080 can defer to it.
+func gl013Owns(name string, job *yaml.Node) bool {
+	if !hasExecutionRestriction(job) && !inheritsConfig(job) && publishesMainPages(name, job) {
+		return true
+	}
 	env := parser.FindKey(job, "environment")
 	if env == nil {
 		return false

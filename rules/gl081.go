@@ -179,26 +179,133 @@ var (
 // to a protected ref, tag, or a named branch: the default branch, a tag, an
 // explicit CI_COMMIT_REF_PROTECTED == "true", or an explicit branch equality.
 //
-// Every || alternative must restrict, because any one of them admits the
-// pipeline; within an alternative, one restricting && operand is enough.
-// Parentheses are dropped, which can only under-count a restriction such as
-// (a || b) && c, never invent one, so the error is a finding rather than a
-// silenced one.
+// && binds tighter than ||, as in GitLab. Every || alternative must restrict,
+// because any one of them admits the pipeline; of && operands, one restricting
+// operand is enough. An expression whose parentheses don't balance restricts
+// nothing, so the error is a finding rather than a silenced one.
 func ifRestrictsToProtected(expr string) bool {
-	expr = strings.NewReplacer("(", " ", ")", " ").Replace(expr)
-	for _, alt := range strings.Split(expr, "||") {
-		restricted := false
-		for _, operand := range strings.Split(alt, "&&") {
-			if operandRestrictsToProtected(strings.TrimSpace(operand)) {
-				restricted = true
-				break
+	expr = trimOuterParens(strings.TrimSpace(expr))
+	if alts := splitTopLevel(expr, "||"); len(alts) > 1 {
+		for _, alt := range alts {
+			if !ifRestrictsToProtected(alt) {
+				return false
 			}
 		}
-		if !restricted {
-			return false
+		return true
+	}
+	if ops := splitTopLevel(expr, "&&"); len(ops) > 1 {
+		for _, op := range ops {
+			if ifRestrictsToProtected(op) {
+				return true
+			}
+		}
+		return false
+	}
+	return operandRestrictsToProtected(expr)
+}
+
+// splitTopLevel splits expr at sep where sep is outside parentheses, quotes
+// and /regex/ literals. It returns nil if the parentheses don't balance.
+func splitTopLevel(expr, sep string) []string {
+	code := exprCode(expr)
+	if code == nil {
+		return nil
+	}
+	var parts []string
+	depth, start := 0, 0
+	for i := 0; i < len(expr); i++ {
+		if !code[i] {
+			continue
+		}
+		switch {
+		case expr[i] == '(':
+			depth++
+		case expr[i] == ')':
+			depth--
+			if depth < 0 {
+				return nil
+			}
+		case depth == 0 && strings.HasPrefix(expr[i:], sep):
+			parts = append(parts, strings.TrimSpace(expr[start:i]))
+			i += len(sep) - 1
+			start = i + 1
 		}
 	}
-	return true
+	if depth != 0 {
+		return nil
+	}
+	return append(parts, strings.TrimSpace(expr[start:]))
+}
+
+// trimOuterParens removes parentheses that enclose the whole expression, but
+// not the two in "(a) && (b)".
+func trimOuterParens(expr string) string {
+	for strings.HasPrefix(expr, "(") && closingParen(expr) == len(expr)-1 {
+		expr = strings.TrimSpace(expr[1 : len(expr)-1])
+	}
+	return expr
+}
+
+// closingParen returns the index of the parenthesis that closes the one at
+// expr[0], or -1.
+func closingParen(expr string) int {
+	code := exprCode(expr)
+	depth := 0
+	for i := range code {
+		if !code[i] {
+			continue
+		}
+		switch expr[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// exprCode marks the bytes of a rules:if expression that are outside quoted
+// strings and /regex/ literals, so parentheses and operators inside them are
+// not read as syntax. A regex literal only follows =~ or !~. It returns nil
+// for an unterminated string or regex.
+func exprCode(expr string) []bool {
+	code := make([]bool, len(expr))
+	var quote byte
+	inRegex := false
+	for i := 0; i < len(expr); i++ {
+		c := expr[i]
+		switch {
+		case inRegex:
+			if c == '\\' {
+				i++
+			} else if c == '/' {
+				inRegex = false
+			}
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '/' && regexFollows(expr[:i]):
+			inRegex = true
+		default:
+			code[i] = true
+		}
+	}
+	if quote != 0 || inRegex {
+		return nil
+	}
+	return code
+}
+
+func regexFollows(before string) bool {
+	before = strings.TrimSpace(before)
+	return strings.HasSuffix(before, "=~") || strings.HasSuffix(before, "!~")
 }
 
 func operandRestrictsToProtected(op string) bool {

@@ -77,7 +77,9 @@ func checkDocSections(t *testing.T, id string) {
 		return // checkDocFile already reports the missing file
 	}
 	var hasRisk, hasSafe bool
-	for _, line := range strings.Split(string(content), "\n") {
+	// Checked-out docs may carry CRLF endings on Windows; normalize
+	// them first, as docSection in cmd/glsec/explain.go does.
+	for _, line := range strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n") {
 		switch line {
 		case "## Risk", "## What glsec checks":
 			hasRisk = true

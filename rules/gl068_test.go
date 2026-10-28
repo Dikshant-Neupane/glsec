@@ -70,3 +70,131 @@ job:
 		t.Fatalf("expected 2 findings (before+after script), got %d", len(f))
 	}
 }
+
+func TestGL068_ShellInvocationFlags(t *testing.T) {
+	flagged := []string{
+		"bash -x ./deploy.sh",
+		"bash -xe ./deploy.sh",
+		"bash -ex ./deploy.sh",
+		"bash -o xtrace ./deploy.sh",
+		"sh -x -c \"echo hi\"",
+		"sh -xc \"echo hi\"",
+		"dash -x ./deploy.sh",
+		"zsh -xe ./deploy.sh",
+		"ksh -o xtrace ./deploy.sh",
+		"sudo bash -x ./deploy.sh",
+		"/usr/bin/bash -x ./deploy.sh",
+		"bash -x",
+	}
+	for _, line := range flagged {
+		f := findings068(t, "job:\n  script:\n    - '"+line+"'\n")
+		if len(f) != 1 {
+			t.Errorf("expected 1 finding for %q, got %d: %+v", line, len(f), f)
+			continue
+		}
+		if f[0].RuleID != "GL068" || f[0].Severity != finding.Warn {
+			t.Errorf("unexpected finding for %q: %+v", line, f[0])
+		}
+	}
+}
+
+func TestGL068_ShellInvocationNotFlagged(t *testing.T) {
+	clean := []string{
+		"bash script.sh -x",          // -x belongs to the script, not the shell
+		"bash -c \"echo -x\"",        // -x inside the -c command string
+		"bash -e ./deploy.sh",        // no x
+		"bash +o xtrace ./deploy.sh", // disabling form
+		"bash ./deploy.sh",
+		"tar -xzf archive.tar.gz",
+		"grep -x pattern file",
+		"unzip -x archive.zip",
+		"xargs -x echo",
+		"echo bash -x",
+		"docker run -x image",
+		"# bash -x ./deploy.sh",
+	}
+	for _, line := range clean {
+		if f := findings068(t, "job:\n  script:\n    - '"+line+"'\n"); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %d: %+v", line, len(f), f)
+		}
+	}
+}
+
+func TestGL068_ShellOptsFlags(t *testing.T) {
+	flagged := []string{
+		"export SHELLOPTS=xtrace",
+		"SHELLOPTS=xtrace",
+		"SHELLOPTS=errexit:xtrace",
+		"export SHELLOPTS=xtrace:errexit",
+		"FOO=1 SHELLOPTS=xtrace ./deploy.sh",
+	}
+	for _, line := range flagged {
+		f := findings068(t, "job:\n  script:\n    - '"+line+"'\n")
+		if len(f) != 1 {
+			t.Errorf("expected 1 finding for %q, got %d: %+v", line, len(f), f)
+		}
+	}
+}
+
+func TestGL068_ShellOptsNotFlagged(t *testing.T) {
+	clean := []string{
+		"export SHELLOPTS=errexit",
+		"SHELLOPTS=",
+		"echo SHELLOPTS=xtrace",
+		"grep SHELLOPTS=xtrace file",
+		"export SHELLOPTS",
+	}
+	for _, line := range clean {
+		if f := findings068(t, "job:\n  script:\n    - '"+line+"'\n"); len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %d: %+v", line, len(f), f)
+		}
+	}
+}
+
+func TestGL068_VariablesShellOpts(t *testing.T) {
+	f := findings068(t, `
+variables:
+  SHELLOPTS: xtrace
+job:
+  script:
+    - echo hi
+`)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for pipeline SHELLOPTS, got %d: %+v", len(f), f)
+	}
+	f = findings068(t, `
+job:
+  variables:
+    SHELLOPTS: errexit:xtrace
+  script:
+    - echo hi
+`)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for job SHELLOPTS, got %d: %+v", len(f), f)
+	}
+	f = findings068(t, `
+job:
+  variables:
+    SHELLOPTS: errexit
+  script:
+    - echo hi
+`)
+	if len(f) != 0 {
+		t.Fatalf("expected no finding for SHELLOPTS without xtrace, got %d: %+v", len(f), f)
+	}
+}
+
+func TestGL068_InvocationBeforeAndAfterScript(t *testing.T) {
+	f := findings068(t, `
+job:
+  before_script:
+    - bash -o xtrace ./build.sh
+  after_script:
+    - zsh -xe ./cleanup.sh
+  script:
+    - echo hi
+`)
+	if len(f) != 2 {
+		t.Fatalf("expected 2 findings (before+after script), got %d", len(f))
+	}
+}

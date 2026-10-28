@@ -1,4 +1,4 @@
-# #836 (open): bash -x and SHELLOPTS=xtrace trace like set -x. The snapshot records today's behaviour.
+# #836: bash -x and SHELLOPTS=xtrace trace like set -x and are reported.
 a:
   script:
     - set -x

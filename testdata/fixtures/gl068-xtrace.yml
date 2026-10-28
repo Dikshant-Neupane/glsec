@@ -11,3 +11,9 @@ release:
     - set -o xtrace
   script:
     - 'curl -H "Authorization: Bearer $API_TOKEN" https://api.example/release'
+
+trace-shell:
+  image: alpine:3.20
+  script:
+    - bash -x ./deploy.sh
+    - export SHELLOPTS=xtrace

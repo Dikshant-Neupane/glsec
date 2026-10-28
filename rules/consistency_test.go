@@ -32,6 +32,7 @@ func TestRuleConsistency(t *testing.T) {
 			}
 
 			checkDocFile(t, id)
+			checkDocSections(t, id)
 			checkFixtureFires(t, id)
 			checkOWASPMapping(t, id)
 			checkCWEMapping(t, id)
@@ -62,6 +63,33 @@ func checkDocFile(t *testing.T, id string) {
 	}
 	if !strings.Contains(string(content), "CICD-SEC-") && !strings.Contains(string(content), "OWASP") {
 		t.Errorf("docs/rules/%s.md has no OWASP reference (add 'CICD-SEC-N' or 'OWASP')", id)
+	}
+}
+
+// checkDocSections verifies that a rule doc has the sections glsec explain
+// and the SARIF rule metadata read by name: a risk section and a safe
+// alternative section (see docSection in cmd/glsec/explain.go).
+func checkDocSections(t *testing.T, id string) {
+	t.Helper()
+	path := filepath.Join("..", "docs", "rules", id+".md")
+	content, err := os.ReadFile(path) //nolint:gosec // G304: test reads known-safe local paths
+	if err != nil {
+		return // checkDocFile already reports the missing file
+	}
+	var hasRisk, hasSafe bool
+	for _, line := range strings.Split(string(content), "\n") {
+		switch line {
+		case "## Risk", "## What glsec checks":
+			hasRisk = true
+		case "## Safe alternative", "## Safe alternatives":
+			hasSafe = true
+		}
+	}
+	if !hasRisk {
+		t.Errorf("docs/rules/%s.md has no '## Risk' or '## What glsec checks' section", id)
+	}
+	if !hasSafe {
+		t.Errorf("docs/rules/%s.md has no '## Safe alternative' or '## Safe alternatives' section", id)
 	}
 }
 

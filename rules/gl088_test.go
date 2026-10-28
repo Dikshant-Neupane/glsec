@@ -27,6 +27,7 @@ var (
 	sonarToken  = "sq" + "p_" + strings.Repeat("0123456789abcdef", 2) + "01234567"
 	gitlabToken = "gl" + "pat-" + strings.Repeat("a1B2", 5)
 	npmToken    = "np" + "m_" + strings.Repeat("a", 36)
+	tsToken     = "tskey-" + "auth-" + "k" + "Ab12Cd34" + "CNTRL-" + strings.Repeat("a", 32)
 )
 
 func TestGL088_TokenInCommand(t *testing.T) {
@@ -53,6 +54,18 @@ func TestGL088_TokenInCommand(t *testing.T) {
 				t.Errorf("expected %q in message, got %q", tc.label, f[0].Message)
 			}
 		})
+	}
+}
+
+// The auth key follows --authkey=, so the boundary before it is "="
+// rather than whitespace; the token still ends at end of line.
+func TestGL088_TailscaleAuthkey(t *testing.T) {
+	f := findings088(t, fmt.Sprintf("build:\n  script:\n    - %q\n", "tailscale up --authkey="+tsToken))
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(f))
+	}
+	if !strings.Contains(f[0].Message, "Tailscale auth key") {
+		t.Errorf("expected %q in message, got %q", "Tailscale auth key", f[0].Message)
 	}
 }
 

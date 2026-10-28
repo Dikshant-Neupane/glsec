@@ -91,6 +91,13 @@ var secretPatterns = []secretPattern{
 	{"NuGet API key", regexp.MustCompile(`(?i)^oy2[a-p][a-z2-7]{15}[aq][a-z2-7]{25}[aeimquy4]$`)},
 	// squ_ user, sqp_ project analysis and sqa_ global analysis tokens.
 	{"SonarQube token", regexp.MustCompile(`^sq[apu]_[0-9a-f]{40}$`)},
+	// Tailscale keys: tskey-<kind>-k<4-16 alnum>CNTRL-<28-40 alnum>.
+	{"Tailscale auth key", regexp.MustCompile(`^tskey-auth-k[A-Za-z0-9]{4,16}CNTRL-[A-Za-z0-9]{28,40}$`)},
+	{"Tailscale API key", regexp.MustCompile(`^tskey-api-k[A-Za-z0-9]{4,16}CNTRL-[A-Za-z0-9]{28,40}$`)},
+	{"Tailscale OAuth client secret", regexp.MustCompile(`^tskey-client-k[A-Za-z0-9]{4,16}CNTRL-[A-Za-z0-9]{28,40}$`)},
+	// Infisical service token: st.<uuid>.<32 hex>, with an optional second
+	// 32 hex segment after rotation.
+	{"Infisical service token", regexp.MustCompile(`^st\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[0-9a-f]{32}(\.[0-9a-f]{32})?$`)},
 }
 
 func (r *gl006) Check(doc *yaml.Node, file string) []finding.Finding {

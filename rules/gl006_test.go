@@ -340,6 +340,11 @@ func anchoredFormatCases() map[string]struct {
 		"sonar user":    {"sq" + "u_" + strings.Repeat("0123456789abcdef", 2) + "01234567", "SonarQube token"},
 		"sonar project": {"sq" + "p_" + strings.Repeat("0123456789abcdef", 2) + "01234567", "SonarQube token"},
 		"sonar global":  {"sq" + "a_" + strings.Repeat("0123456789abcdef", 2) + "01234567", "SonarQube token"},
+		"ts auth":       {"tskey-" + "auth-" + "k" + "Ab12Cd34" + "CNTRL-" + strings.Repeat("a", 32), "Tailscale auth key"},
+		"ts api":        {"tskey-" + "api-" + "k" + "Xy98" + "CNTRL-" + strings.Repeat("b", 28), "Tailscale API key"},
+		"ts oauth":      {"tskey-" + "client-" + "k" + "QwErTy12" + "CNTRL-" + strings.Repeat("c", 40), "Tailscale OAuth client secret"},
+		"infisical":     {"s" + "t." + "01234567" + "-" + "89ab" + "-" + "cdef" + "-" + "0123" + "-" + "456789abcdef" + "." + strings.Repeat("0123456789abcdef", 2), "Infisical service token"},
+		"infisical rot": {"s" + "t." + "01234567" + "-" + "89ab" + "-" + "cdef" + "-" + "0123" + "-" + "456789abcdef" + "." + strings.Repeat("0123456789abcdef", 2) + "." + strings.Repeat("fedcba9876543210", 2), "Infisical service token"},
 	}
 }
 
@@ -427,6 +432,29 @@ func TestGL006_SonarQubeNearMiss_NoFinding(t *testing.T) {
 		f := findings006(t, fmt.Sprintf(`
 variables:
   SONAR_TOKEN: "%s"
+build:
+  script: [echo ok]
+`, v))
+		if len(f) != 0 {
+			t.Errorf("expected no finding for %q, got %d", v, len(f))
+		}
+	}
+}
+
+func TestGL006_TailscaleInfisicalNearMiss_NoFinding(t *testing.T) {
+	values := []string{
+		"tskey-" + "auth-xxxx", // placeholder from issue #794, no key segment
+		"tskey-" + "auth-" + "k" + "Ab12" + "CNTRL-" + strings.Repeat("a", 27),                                                      // tail too short
+		"tskey-" + "auth-" + "k" + "Ab" + "CNTRL-" + strings.Repeat("a", 32),                                                        // middle segment too short
+		"tskey-" + "api-" + "k" + "Ab12Cd34" + "CNTRL-" + strings.Repeat("a", 41),                                                   // tail too long
+		"s" + "t." + "01234567" + "-" + "89ab" + "-" + "cdef" + "-" + "0123" + "-" + "456789abcdef" + "." + strings.Repeat("0", 31), // Infisical secret too short
+		"s" + "t." + "01234567" + "-" + "89ab" + "-" + "cdef" + "-" + "0123" + "-" + "456789abcdef",                                 // Infisical secret missing
+		"$TS_AUTHKEY",
+	}
+	for _, v := range values {
+		f := findings006(t, fmt.Sprintf(`
+variables:
+  TOKEN: "%s"
 build:
   script: [echo ok]
 `, v))

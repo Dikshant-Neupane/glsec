@@ -22,7 +22,7 @@ func findings018(t *testing.T, yaml string) []finding.Finding {
 func TestGL018_PipelineLevelToken(t *testing.T) {
 	f := findings018(t, `
 variables:
-  PROD_API_TOKEN: $PROD_API_TOKEN
+  PROD_API_TOKEN: $MY_API_TOKEN
 
 build:
   script: go build
@@ -38,7 +38,7 @@ build:
 func TestGL018_PipelineLevelPassword(t *testing.T) {
 	f := findings018(t, `
 variables:
-  PROD_DB_PASSWORD: $PROD_DB_PASSWORD
+  PROD_DB_PASSWORD: $DB_MASTER_PASSWORD
 `)
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding for _PASSWORD, got %d", len(f))
@@ -48,7 +48,7 @@ variables:
 func TestGL018_PipelineLevelKey(t *testing.T) {
 	f := findings018(t, `
 variables:
-  AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+  AWS_SECRET_ACCESS_KEY: $PROD_AWS_KEY
 `)
 	if len(f) != 1 {
 		t.Fatalf("expected 1 finding for _KEY suffix, got %d", len(f))
@@ -69,7 +69,7 @@ func TestGL018_ExtendedForm(t *testing.T) {
 	f := findings018(t, `
 variables:
   DEPLOY_TOKEN:
-    value: $DEPLOY_TOKEN
+    value: $PROD_DEPLOY_TOKEN
     description: "Deployment token"
 `)
 	if len(f) != 1 {
@@ -115,7 +115,7 @@ deploy:
 func TestGL018_MultipleSecrets(t *testing.T) {
 	f := findings018(t, `
 variables:
-  PROD_DB_PASSWORD: $PROD_DB_PASSWORD
+  PROD_DB_PASSWORD: $DB_MASTER_PASSWORD
   API_TOKEN: $MY_API_TOKEN
   REGISTRY_URL: $CI_REGISTRY
 `)
@@ -128,7 +128,7 @@ func TestGL018_DefaultVariablesToken(t *testing.T) {
 	f := findings018(t, `
 default:
   variables:
-    PROD_API_TOKEN: $PROD_API_TOKEN
+    PROD_API_TOKEN: $MY_API_TOKEN
 
 build:
   script: go build
@@ -152,6 +152,27 @@ build:
 `)
 	if len(f) != 0 {
 		t.Errorf("expected no finding for non-secret default variable, got %d", len(f))
+	}
+}
+
+func TestGL018_SelfReference_NoFinding(t *testing.T) {
+	f := findings018(t, `
+variables:
+  S3_ACCESS_KEY: $S3_ACCESS_KEY
+  BRACED_TOKEN: ${BRACED_TOKEN}
+`)
+	if len(f) != 0 {
+		t.Fatalf("expected no findings for a variable referencing itself, got %d", len(f))
+	}
+}
+
+func TestGL018_DifferentReference_StillFlagged(t *testing.T) {
+	f := findings018(t, `
+variables:
+  DEPLOY_TOKEN: $PROD_TOKEN
+`)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for a variable referencing a different name, got %d", len(f))
 	}
 }
 

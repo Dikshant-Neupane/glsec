@@ -1,5 +1,5 @@
-# #820 (open): a fuzzing job named "migrations" is still reported as a deploy job;
-# the snapshot records today's behaviour.
+# #820: a fuzzing job named "migrations" in stage: test is not reported as a
+# deploy job; only the unrelated GL053 finding remains.
 fuzz migrations:
   stage: test
   interruptible: true

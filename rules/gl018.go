@@ -58,9 +58,12 @@ func checkSecretReexport(varsNode *yaml.Node, file string) []finding.Finding {
 		}
 		// A predefined variable (CI_JOB_TOKEN, CI_REGISTRY_PASSWORD,
 		// CI_COMMIT_REF_SLUG) is in every job anyway; re-exporting it adds no
-		// exposure.
+		// exposure. The same holds for a variable that references itself
+		// (#820): X: $X widens nothing, since the value is already visible
+		// under the same name wherever it is set, and expands to an empty
+		// string where it is scoped away.
 		m := varRefRe.FindStringSubmatch(strings.TrimSpace(scalar.Value))
-		if m == nil || isPredefinedVar(m[1]) {
+		if m == nil || isPredefinedVar(m[1]) || m[1] == nameNode.Value {
 			continue
 		}
 

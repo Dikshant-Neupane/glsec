@@ -150,6 +150,39 @@ unit-tests:
 	}
 }
 
+func TestGL049_NameKeywordInTestStage_NoFinding(t *testing.T) {
+	f := findings049(t, `
+fuzz migrations:
+  stage: test
+  interruptible: true
+  script: [npm run fuzz-migrations]
+`)
+	if len(f) != 0 {
+		t.Fatalf("expected no findings for a name-keyword job in a check-only stage, got %d: %v", len(f), f)
+	}
+}
+
+func TestGL049_NameKeywordInTestStage_StillFlagged(t *testing.T) {
+	f := findings049(t, `
+fuzz migrations:
+  stage: test
+  interruptible: true
+  environment: production
+  script: [npm run fuzz-migrations]
+run migrations:
+  stage: deploy
+  interruptible: true
+  script: [./migrate up]
+ship it:
+  stage: build
+  interruptible: true
+  script: [./ship.sh]
+`)
+	if len(f) != 3 {
+		t.Fatalf("expected 3 findings (environment job, deploy-stage job, build-stage name job), got %d: %v", len(f), f)
+	}
+}
+
 func TestGL049_InheritedFromHiddenTemplate(t *testing.T) {
 	f := findings049(t, `
 .deploy:

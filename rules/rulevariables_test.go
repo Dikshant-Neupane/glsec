@@ -173,7 +173,7 @@ func TestRuleVariables_PipelineLevelOnly(t *testing.T) {
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
       variables:
-        PROD_API_TOKEN: $PROD_API_TOKEN
+        PROD_API_TOKEN: $MY_API_TOKEN
 deploy:
   trigger:
     project: group/downstream
@@ -185,7 +185,7 @@ deploy:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
       variables:
-        PROD_API_TOKEN: $PROD_API_TOKEN
+        PROD_API_TOKEN: $MY_API_TOKEN
 `
 	}
 	for _, r := range []rule.Rule{GL018, GL037} {

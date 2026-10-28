@@ -95,6 +95,34 @@ deploy:
 	}
 }
 
+func TestGL043_NamespaceSlashPrefix_NoFinding(t *testing.T) {
+	f := findings043(t, `
+build:
+  script: [make]
+  rules:
+    - if: $CI_PROJECT_NAMESPACE =~ /^mygroup\//
+    - if: $CI_PROJECT_NAMESPACE =~ /^mygroup\/sub\//
+    - if: $CI_PROJECT_NAMESPACE =~ /^my\.group\//
+`)
+	if len(f) != 0 {
+		t.Fatalf("expected no findings for a namespace prefix ending in /, got %d: %v", len(f), f)
+	}
+}
+
+func TestGL043_NamespaceSlashPrefix_StillFlagged(t *testing.T) {
+	f := findings043(t, `
+build:
+  script: [make]
+  rules:
+    - if: $CI_PROJECT_NAMESPACE =~ /^mygroup/
+    - if: $CI_COMMIT_REF_NAME =~ /^release/
+    - if: $CI_PROJECT_NAMESPACE =~ /^my.group\//
+`)
+	if len(f) != 3 {
+		t.Fatalf("expected 3 findings (bare namespace prefix, ref-name prefix, non-literal namespace prefix), got %d: %v", len(f), f)
+	}
+}
+
 func TestGL043_RefNamePrefixMatch(t *testing.T) {
 	f := findings043(t, `
 deploy:

@@ -54,11 +54,20 @@ func (r *gl049) Check(doc *yaml.Node, file string) []finding.Finding {
 
 // deployLikeInherited is IsDeployLikeJob over the keys the job inherits, with
 // a development or testing environment not counting as a deploy (#797).
+// A job whose only deploy signal is a name keyword and whose stage is a
+// check-only stage (#820, e.g. a fuzz job named after migrations in
+// stage: test) is not a deploy job: the stage says what the job does.
+// A job with an environment: or a deploy-like stage still counts, as do
+// name-keyword jobs in any other stage.
 func deployLikeInherited(in *Inheritance, jobName string, job *yaml.Node) bool {
 	if env := in.Key(job, "environment"); env != nil && !envActionNoDeploy(env) && !envDevTier(env) {
 		return true
 	}
 	if deployLikeName(strings.ToLower(jobName), deployLikeKeywords) {
+		if stage := in.Key(job, "stage"); stage != nil && stage.Kind == yaml.ScalarNode &&
+			hasWordPrefix(strings.ToLower(stage.Value), checkOnlyKeywords) {
+			return false
+		}
 		return true
 	}
 	if stage := in.Key(job, "stage"); stage != nil && stage.Kind == yaml.ScalarNode {

@@ -77,6 +77,45 @@ func checkRulesIfNodes(node *yaml.Node, file, job string) []finding.Finding {
 	return findings
 }
 
+// isLiteralNamespacePrefix reports whether pattern is a literal namespace
+// prefix ending in an escaped slash, such as ^mygroup\/ or ^mygroup\/sub\/:
+// an optional ^ or \A start anchor, then only literal namespace path
+// characters (letters, digits, _ and -, plus escaped . - _ and /), ending
+// in \/. Anything else, such as an unescaped . or a character class, could
+// match a group that is not a subgroup of the named one.
+func isLiteralNamespacePrefix(pattern string) bool {
+	p := strings.TrimPrefix(strings.TrimPrefix(pattern, "^"), `\A`)
+	if !strings.HasSuffix(p, `\/`) {
+		return false
+	}
+	p = strings.TrimSuffix(p, `\/`)
+	if p == "" {
+		return false
+	}
+	for i := 0; i < len(p); {
+		c := p[i]
+		if c == '\\' {
+			if i+1 >= len(p) {
+				return false
+			}
+			switch p[i+1] {
+			case '.', '-', '_', '/':
+			default:
+				return false
+			}
+			i += 2
+			continue
+		}
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+			c == '_' || c == '-' {
+			i++
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func checkIfCondition(node *yaml.Node, file string) []finding.Finding {
 	var findings []finding.Finding
 	matches := gl043Re.FindAllStringSubmatch(node.Value, -1)
@@ -91,6 +130,17 @@ func checkIfCondition(node *yaml.Node, file string) []finding.Finding {
 			strings.HasSuffix(pattern, ".*") && !strings.HasSuffix(pattern, `\.*`)
 
 		if hasEnd {
+			continue
+		}
+
+		// A namespace prefix ending in / only matches the group itself and
+		// its subgroups (#820): only that group's owners can create a
+		// subgroup, so the prefix match is intended, not a bypass. This
+		// applies to $CI_PROJECT_NAMESPACE only; $CI_PROJECT_ROOT_NAMESPACE
+		// and $CI_PROJECT_PATH are not matched by this rule at all, so they
+		// already produce no finding here. The prefix itself must be
+		// literal: a metacharacter such as . could match a different group.
+		if varName == "CI_PROJECT_NAMESPACE" && hasStart && isLiteralNamespacePrefix(pattern) {
 			continue
 		}
 

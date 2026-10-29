@@ -257,9 +257,37 @@ func writeJSON(w io.Writer, findings []finding.Finding, owasp, asvs func(string)
 		}
 		out.Findings = append(out.Findings, jf)
 	}
-	enc := json.NewEncoder(w)
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	if err := enc.Encode(out); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, escapeBidiJSON(buf.String()))
+	return err
+}
+
+// escapeBidiJSON replaces each bidirectional control character in s with
+// its JSON escape, so the encoded output never carries one raw. The
+// characters can only occur inside JSON strings here, and escaping them
+// keeps the decoded value identical to the original.
+var bidiJSONReplacer = strings.NewReplacer(
+	"\u202a", `\u202a`,
+	"\u202b", `\u202b`,
+	"\u202c", `\u202c`,
+	"\u202d", `\u202d`,
+	"\u202e", `\u202e`,
+	"\u2066", `\u2066`,
+	"\u2067", `\u2067`,
+	"\u2068", `\u2068`,
+	"\u2069", `\u2069`,
+	"\u200e", `\u200e`,
+	"\u200f", `\u200f`,
+	"\u061c", `\u061c`,
+)
+
+func escapeBidiJSON(s string) string {
+	return bidiJSONReplacer.Replace(s)
 }
 
 // SARIF 2.1.0 types — minimal subset for GitHub Code Scanning. GitLab reads

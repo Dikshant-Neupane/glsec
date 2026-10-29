@@ -166,6 +166,41 @@ func TestWriteJSON_WithJob(t *testing.T) {
 	}
 }
 
+func TestWriteJSON_BidiCharactersEscaped(t *testing.T) {
+	bidi := []rune{
+		'\u202a', '\u202b', '\u202c', '\u202d', '\u202e',
+		'\u2066', '\u2067', '\u2068', '\u2069',
+		'\u200e', '\u200f', '\u061c',
+	}
+	job := "job\u202etset"
+	file := "\u2066file.yml"
+	msg := "a\u202ab\u202bc\u202cd\u202de\u202ef\u2066g\u2067h\u2068i\u2069j\u200ek\u200fl\u061cm"
+	var buf bytes.Buffer
+	findings := []finding.Finding{
+		{RuleID: "GL001", Severity: finding.Error, Job: job, File: file, Line: 1, Message: msg},
+	}
+	if err := Write(&buf, FormatJSON, findings, 0, false, false); err != nil {
+		t.Fatal(err)
+	}
+	raw := buf.String()
+	for _, r := range bidi {
+		if strings.ContainsRune(raw, r) {
+			t.Errorf("raw JSON output contains bidi rune U+%04X", r)
+		}
+	}
+	var out jsonOutput
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(out.Findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(out.Findings))
+	}
+	f := out.Findings[0]
+	if f.Job != job || f.File != file || f.Message != msg {
+		t.Errorf("round trip changed values: got job=%q file=%q message=%q", f.Job, f.File, f.Message)
+	}
+}
+
 func TestWriteTable(t *testing.T) {
 	var buf bytes.Buffer
 	if err := Write(&buf, FormatTable, testFindingsWithJob, 3, false, false); err != nil {

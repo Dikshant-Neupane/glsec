@@ -99,6 +99,96 @@ test:
 	}
 }
 
+func TestGL060_RunDockerSocketIsWarn(t *testing.T) {
+	f := findings060(t, `
+test:
+  script:
+    - docker run -v /run/docker.sock:/var/run/docker.sock myimage
+`)
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 warn finding for /run/docker.sock, got %+v", f)
+	}
+}
+
+func TestGL060_MountBindSocketIsWarn(t *testing.T) {
+	f := findings060(t, `
+test:
+  script:
+    - docker run --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock myimage
+`)
+	if len(f) != 1 || f[0].Severity != finding.Warn {
+		t.Fatalf("expected 1 warn finding for mount form socket bind, got %+v", f)
+	}
+}
+
+func TestGL060_MountBindEtcIsError(t *testing.T) {
+	f := findings060(t, `
+test:
+  script:
+    - docker run --mount type=bind,src=/etc,dst=/x myimage
+`)
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 error finding for mount form /etc bind, got %+v", f)
+	}
+}
+
+func TestGL060_MountEqualsFormIsError(t *testing.T) {
+	f := findings060(t, `
+test:
+  script:
+    - docker run --mount=type=bind,source=/etc,target=/x myimage
+`)
+	if len(f) != 1 || f[0].Severity != finding.Error {
+		t.Fatalf("expected 1 error finding for equals form mount bind, got %+v", f)
+	}
+}
+
+func TestGL060_MountVolumeNamedNotFlagged(t *testing.T) {
+	f := findings060(t, `
+test:
+  script:
+    - docker run --mount type=volume,source=name myimage
+`)
+	if len(f) != 0 {
+		t.Fatalf("expected no findings for named volume mount, got %d", len(f))
+	}
+}
+
+func TestGL060_MountTmpfsNotFlagged(t *testing.T) {
+	f := findings060(t, `
+test:
+  script:
+    - docker run --mount type=tmpfs,target=/x myimage
+`)
+	if len(f) != 0 {
+		t.Fatalf("expected no findings for tmpfs mount, got %d", len(f))
+	}
+}
+
+func TestGL060_PodmanAndNerdctlRun(t *testing.T) {
+	f := findings060(t, `
+test:
+  script:
+    - podman run -v /etc:/etc myimage
+    - nerdctl run -v /etc:/etc myimage
+`)
+	if len(f) != 2 {
+		t.Fatalf("expected 2 findings for podman and nerdctl run, got %+v", f)
+	}
+}
+
+func TestGL060_DockerCreateAndContainerRun(t *testing.T) {
+	f := findings060(t, `
+test:
+  script:
+    - docker create -v /etc:/etc myimage
+    - docker container run -v /etc:/etc myimage
+`)
+	if len(f) != 2 {
+		t.Fatalf("expected 2 findings for docker create and container run, got %+v", f)
+	}
+}
+
 func TestGL060_CommentNotFlagged(t *testing.T) {
 	f := findings060(t, `
 test:

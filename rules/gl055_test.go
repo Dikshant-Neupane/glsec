@@ -68,6 +68,68 @@ build:
 	}
 }
 
+func TestGL055_RunDockerSocket(t *testing.T) {
+	f := findings055(t, `
+build:
+  image: docker:26.0
+  variables:
+    DOCKER_HOST: unix:///run/docker.sock
+  script: [docker build .]
+`)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for /run/docker.sock, got %d", len(f))
+	}
+}
+
+func TestGL055_PodmanSocket(t *testing.T) {
+	f := findings055(t, `
+build:
+  image: docker:26.0
+  variables:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+  script: [docker build .]
+`)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for Podman socket, got %d", len(f))
+	}
+}
+
+func TestGL055_PodmanUserSocket(t *testing.T) {
+	f := findings055(t, `
+build:
+  variables:
+    DOCKER_HOST: unix:///run/user/1000/podman/podman.sock
+  script: [docker build .]
+`)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for per user Podman socket, got %d", len(f))
+	}
+}
+
+func TestGL055_XDGRuntimeDirPodmanSocket(t *testing.T) {
+	f := findings055(t, `
+build:
+  variables:
+    DOCKER_HOST: unix://$XDG_RUNTIME_DIR/podman/podman.sock
+  script: [docker build .]
+`)
+	if len(f) != 1 {
+		t.Fatalf("expected 1 finding for XDG runtime dir Podman socket, got %d", len(f))
+	}
+}
+
+func TestGL055_OtherUnixSocketNotFlagged(t *testing.T) {
+	f := findings055(t, `
+build:
+  variables:
+    DOCKER_HOST: unix:///tmp/foo.sock
+  script: [docker build .]
+`)
+	if len(f) != 0 {
+		t.Fatalf("expected no findings for an unrelated unix socket, got %d", len(f))
+	}
+}
+
 func TestGL055_Clean(t *testing.T) {
 	f := findings055(t, `
 test:

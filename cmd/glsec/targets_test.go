@@ -50,6 +50,32 @@ func TestResolveTargets_Glob(t *testing.T) {
 	}
 }
 
+func TestResolveTargets_DirectoryScansItsPipeline(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	writeFile(t, filepath.Join(sub, ".gitlab-ci.yml"))
+
+	got, err := resolveTargets([]string{sub}, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(sub, ".gitlab-ci.yml")
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("expected [%s], got %v", want, got)
+	}
+}
+
+func TestResolveTargets_DirectoryWithoutPipelineErrors(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "empty")
+	if err := os.MkdirAll(sub, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveTargets([]string{sub}, false, nil); err == nil {
+		t.Error("expected error for a directory without a .gitlab-ci.yml")
+	}
+}
+
 func TestResolveTargets_NoMatchErrors(t *testing.T) {
 	if _, err := resolveTargets([]string{"/no/such/path-xyz.yml"}, false, nil); err == nil {
 		t.Error("expected error for non-existent file with no glob match")

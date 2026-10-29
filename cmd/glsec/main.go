@@ -608,7 +608,15 @@ func resolveTargets(args []string, recursive bool, patterns []string) ([]string,
 
 	var out []string
 	for _, a := range args {
-		if _, err := os.Stat(a); err == nil {
+		if info, err := os.Stat(a); err == nil {
+			if info.IsDir() {
+				ci := filepath.Join(a, ".gitlab-ci.yml")
+				if _, err := os.Stat(ci); err != nil {
+					return nil, fmt.Errorf("%s is a directory without a .gitlab-ci.yml — pass the pipeline file", a)
+				}
+				out = append(out, ci)
+				continue
+			}
 			out = append(out, a)
 			continue
 		}

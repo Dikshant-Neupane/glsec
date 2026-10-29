@@ -110,6 +110,9 @@ glsec .gitlab-ci.yml
 glsec .gitlab-ci.yml pipelines/deploy.yml
 glsec pipelines/*.yml
 
+# scan a directory: its .gitlab-ci.yml (an error names the directory when it has none)
+glsec sub
+
 # recursively scan a tree for all .gitlab-ci.yml files
 glsec --recursive .
 

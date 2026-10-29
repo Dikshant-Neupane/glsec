@@ -60,7 +60,9 @@ func TestResolveTargets_DirectoryScansItsPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(sub, ".gitlab-ci.yml")
+	// Slash form is canonical: on Windows the directory form must name
+	// the file sub/.gitlab-ci.yml, matching the explicit file form.
+	want := filepath.ToSlash(filepath.Join(sub, ".gitlab-ci.yml"))
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("expected [%s], got %v", want, got)
 	}

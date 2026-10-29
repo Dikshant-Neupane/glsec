@@ -610,7 +610,11 @@ func resolveTargets(args []string, recursive bool, patterns []string) ([]string,
 	for _, a := range args {
 		if info, err := os.Stat(a); err == nil {
 			if info.IsDir() {
-				ci := filepath.Join(a, ".gitlab-ci.yml")
+				// Slash form, so the directory form names the file the
+				// same way as the explicit file form on every platform:
+				// on Windows filepath.Join would give sub\.gitlab-ci.yml
+				// while glsec sub/.gitlab-ci.yml reports sub/.gitlab-ci.yml.
+				ci := filepath.ToSlash(filepath.Join(a, ".gitlab-ci.yml"))
 				if _, err := os.Stat(ci); err != nil {
 					if !errors.Is(err, fs.ErrNotExist) {
 						return nil, err

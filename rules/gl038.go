@@ -24,8 +24,9 @@ type credCheck struct {
 	re   *regexp.Regexp
 	msg  string
 	// db reports whether the credential goes to a database CLI whose
-	// target host can be a job service container or localhost. Only
-	// those checks are suppressed for own-service targets (#800, part 1).
+	// target host can be a job service container, or localhost when the
+	// job has services. Only those checks are suppressed for own-service
+	// targets (#800, part 1).
 	db bool
 }
 
@@ -77,22 +78,25 @@ var credChecks = []credCheck{
 func (r *gl038) Check(doc *yaml.Node, file string) []finding.Finding {
 	var findings []finding.Finding
 	in := NewInheritance(doc)
-	aliases := jobServiceAliases(doc, in)
+	aliases, hasServices := jobServiceAliases(doc, in)
 	// The result depends on the job (its services), so visit each job's
 	// script blocks separately instead of deduplicating shared sequences.
 	EachScriptBlockPerJob(doc, file, func(node *yaml.Node, file, job string) {
-		findings = append(findings, checkHardcodedCredScript(node, file, job, aliases[job])...)
+		findings = append(findings, checkHardcodedCredScript(node, file, job, aliases[job], hasServices[job])...)
 	})
 	return findings
 }
 
 // jobServiceAliases maps each job name to the hostnames its service
 // containers are reachable under: the explicit alias: of each service,
-// plus the image name of a service without an alias (GitLab links such a
-// service under its image name, e.g. mysql:8.0 is reachable as mysql).
-// Services from the job's extends: chain and from default: are included.
-func jobServiceAliases(doc *yaml.Node, in *Inheritance) map[string]map[string]bool {
+// plus the image-derived hostnames of a service without an alias (see
+// imageHosts; e.g. mysql:8.0 is reachable as mysql). Services from the
+// job's extends: chain and from default: are included. The second return
+// value reports, per job, whether the job has any services at all: only
+// a job with services can put them on localhost (see targetsOwnService).
+func jobServiceAliases(doc *yaml.Node, in *Inheritance) (map[string]map[string]bool, map[string]bool) {
 	out := map[string]map[string]bool{}
+	hasServices := map[string]bool{}
 	mapping := parser.Unwrap(doc)
 	var defServices *yaml.Node
 	if def := parser.FindKey(mapping, "default"); def != nil {
@@ -100,15 +104,23 @@ func jobServiceAliases(doc *yaml.Node, in *Inheritance) map[string]map[string]bo
 	}
 	parser.EachJob(doc, func(name *yaml.Node, job *yaml.Node) {
 		hosts := map[string]bool{}
+		has := false
 		for _, services := range in.Chain(job, "services") {
+			if services != nil && services.Kind == yaml.SequenceNode && len(services.Content) > 0 {
+				has = true
+			}
 			collectServiceHosts(services, hosts)
 		}
 		if defServices != nil && inheritsDefault(job, "services") {
+			if defServices.Kind == yaml.SequenceNode && len(defServices.Content) > 0 {
+				has = true
+			}
 			collectServiceHosts(defServices, hosts)
 		}
 		out[name.Value] = hosts
+		hasServices[name.Value] = has
 	})
-	return out
+	return out, hasServices
 }
 
 func collectServiceHosts(services *yaml.Node, hosts map[string]bool) {
@@ -134,8 +146,13 @@ func collectServiceHosts(services *yaml.Node, hosts map[string]bool) {
 	}
 }
 
-// imageHosts returns the hostnames an image reference can be reached under:
-// the reference without tag or digest, and its last path component.
+// imageHosts returns the hostnames an image reference can be reached under.
+// GitLab derives them from the whole image name with the tag stripped and
+// every "/" replaced by "__" or "-": registry.example.com/team/mysql is
+// reachable as registry.example.com__team__mysql and
+// registry.example.com-team-mysql. Only an image without a slash, like
+// mysql:8.0, is reachable under its bare name. The last path component
+// of a namespaced image is therefore NOT a hostname for it.
 func imageHosts(ref string) []string {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
@@ -149,11 +166,13 @@ func imageHosts(ref string) []string {
 		ref = ref[:i]
 	}
 	ref = strings.ToLower(ref)
-	hosts := []string{ref}
-	if i := strings.LastIndex(ref, "/"); i >= 0 {
-		hosts = append(hosts, ref[i+1:])
+	if !strings.Contains(ref, "/") {
+		return []string{ref}
 	}
-	return hosts
+	return []string{
+		strings.ReplaceAll(ref, "/", "__"),
+		strings.ReplaceAll(ref, "/", "-"),
+	}
 }
 
 // hostOptionRe extracts the host values named by database CLI host options
@@ -170,18 +189,30 @@ var localHosts = map[string]bool{
 }
 
 // targetsOwnService reports whether every host option in the script item
-// names a service container of the job or a loopback host, and at least one
-// host option is present. An item with no host option, or one that mixes a
-// local host with an external host, is not suppressed: a credential with no
-// explicit target, or one that also reaches an external host, stays flagged.
-func targetsOwnService(item string, aliases map[string]bool) bool {
+// names a service container of the job or, when the job has services, a
+// loopback host, and at least one host option is present. On a shell
+// executor, common on self-hosted runners, localhost is the runner machine,
+// so a credential to localhost in a job without services is a real finding:
+// only the Kubernetes executor puts services on localhost, and a job with
+// services is the case this suppression covers. An item with no host
+// option, or one that mixes a local host with an external host, is not
+// suppressed: a credential with no explicit target, or one that also
+// reaches an external host, stays flagged.
+func targetsOwnService(item string, aliases map[string]bool, hasServices bool) bool {
 	matches := hostOptionRe.FindAllStringSubmatch(item, -1)
 	matches = append(matches, hostOptionAttachedRe.FindAllStringSubmatch(item, -1)...)
 	if len(matches) == 0 {
 		return false
 	}
 	for _, m := range matches {
-		if !localHosts[normalizeHost(m[1])] && !aliases[normalizeHost(m[1])] {
+		host := normalizeHost(m[1])
+		if localHosts[host] {
+			if !hasServices {
+				return false
+			}
+			continue
+		}
+		if !aliases[host] {
 			return false
 		}
 	}
@@ -210,7 +241,7 @@ func normalizeHost(host string) string {
 	return host
 }
 
-func checkHardcodedCredScript(node *yaml.Node, file, job string, aliases map[string]bool) []finding.Finding {
+func checkHardcodedCredScript(node *yaml.Node, file, job string, aliases map[string]bool, hasServices bool) []finding.Finding {
 	if node.Kind != yaml.SequenceNode {
 		return nil
 	}
@@ -223,7 +254,7 @@ func checkHardcodedCredScript(node *yaml.Node, file, job string, aliases map[str
 			if !check.re.MatchString(item.Value) {
 				continue
 			}
-			if check.db && targetsOwnService(item.Value, aliases) {
+			if check.db && targetsOwnService(item.Value, aliases, hasServices) {
 				// The credential only reaches the job's own service
 				// container or localhost: keep looking for another
 				// (non-suppressed) check in the same item.

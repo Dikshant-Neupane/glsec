@@ -16,10 +16,31 @@ func TestGL038(t *testing.T) {
 		wantHits int
 	}{
 		{
-			name: "sqlcmd -P with quoted literal to localhost — own host, no finding (#800)",
+			name: "sqlcmd -P with quoted literal to localhost without services — still flagged (#800)",
 			yaml: `job:
   script:
     - sqlcmd -S localhost -U SA -P "ExampleP4ss!" -Q "SELECT 1"`,
+			wantHits: 1,
+		},
+		{
+			name: "sqlcmd -P with quoted literal to localhost with services — no finding (#800)",
+			yaml: `job:
+  services:
+    - name: mysql:8.0
+      alias: mysql
+  script:
+    - sqlcmd -S localhost -U SA -P "ExampleP4ss!" -Q "SELECT 1"`,
+			wantHits: 0,
+		},
+		{
+			name: "mysql -h localhost with services from default — no finding (#800)",
+			yaml: `default:
+  services:
+    - name: mysql:8.0
+      alias: mysql
+job:
+  script:
+    - mysql -h localhost -u root -pci-only -e "SELECT 1"`,
 			wantHits: 0,
 		},
 		{
@@ -145,10 +166,47 @@ job:
 			wantHits: 0,
 		},
 		{
-			name: "127.0.0.1 target — no finding",
+			name: "127.0.0.1 target without services — still flagged",
 			yaml: `job:
   script:
     - mysql -h 127.0.0.1 -u root -pci-only -e "SELECT 1"`,
+			wantHits: 1,
+		},
+		{
+			name: "127.0.0.1 target with services — no finding",
+			yaml: `job:
+  services:
+    - name: mysql:8.0
+      alias: mysql
+  script:
+    - mysql -h 127.0.0.1 -u root -pci-only -e "SELECT 1"`,
+			wantHits: 0,
+		},
+		{
+			name: "mysql -h bare name of a namespaced service — still flagged (#800)",
+			yaml: `job:
+  services:
+    - registry.example.com/team/mysql:8.0
+  script:
+    - mysql -h mysql -u root -pci-only -e "SELECT 1"`,
+			wantHits: 1,
+		},
+		{
+			name: "mysql -h double-underscore hostname of a namespaced service — no finding (#800)",
+			yaml: `job:
+  services:
+    - registry.example.com/team/mysql:8.0
+  script:
+    - mysql -h registry.example.com__team__mysql -u root -pci-only -e "SELECT 1"`,
+			wantHits: 0,
+		},
+		{
+			name: "mysql -h hyphen hostname of a namespaced service — no finding (#800)",
+			yaml: `job:
+  services:
+    - registry.example.com/team/mysql:8.0
+  script:
+    - mysql -h registry.example.com-team-mysql -u root -pci-only -e "SELECT 1"`,
 			wantHits: 0,
 		},
 		{
